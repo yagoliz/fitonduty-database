@@ -1,0 +1,61 @@
+---
+- name: Install PostgreSQL packages
+  apt:
+    name:
+      - postgresql-{{ postgresql_version }}
+      - postgresql-client-{{ postgresql_version }}
+      - postgresql-contrib-{{ postgresql_version }}
+      - python3-psycopg2
+    state: present
+
+- name: Ensure PostgreSQL is running and enabled
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Set PostgreSQL superuser password
+  postgresql_user:
+    name: postgres
+    password: "{{ postgres_password }}"
+    encrypted: yes
+  become_user: postgres
+  when: postgres_password is defined
+
+- name: Configure PostgreSQL authentication
+  template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    backup: yes
+  notify: restart postgresql
+
+- name: Configure PostgreSQL settings
+  template:
+    src: postgresql.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    backup: yes
+  notify: restart postgresql
+
+- name: Create database
+  postgresql_db:
+    name: "{{ database_name }}"
+    state: present
+  become_user: postgres
+
+- name: Create admin user
+  postgresql_user:
+    db: "{{ database_name }}"
+    name: "{{ admin_user }}"
+    password: "{{ admin_password }}"
+    priv: "ALL"
+    role_attr_flags: "CREATEDB,CREATEROLE"
+    state: present
+  become_user: postgres
+
+- name: Create application user
+  postgresql_user:
+    db: "{{ database_name }}"
+    name: "{{ app_user }}"
+    password: "{{ app_password }}"
+    state: present
+  become_user: postgres

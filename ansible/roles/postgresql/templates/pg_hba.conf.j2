@@ -1,0 +1,26 @@
+# PostgreSQL Client Authentication Configuration File
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# "local" is for Unix domain socket connections only
+local   all             postgres                                peer
+local   all             all                                     peer
+
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            scram-sha-256
+
+{% if postgresql_listen_addresses != 'localhost' %}
+# Allow connections from application servers
+{% for host in groups['application_servers'] | default([]) %}
+host    {{ database_name }}    {{ fitonduty_app_user }}    {{ hostvars[host]['ansible_host'] }}/32    scram-sha-256
+{% endfor %}
+
+# Allow admin connections
+host    {{ database_name }}    {{ fitonduty_admin_user }}    10.0.0.0/8    scram-sha-256
+{% endif %}
+
+# IPv6 local connections:
+host    all             all             ::1/128                 scram-sha-256
+
+# Reject all other connections
+host    all             all             0.0.0.0/0               reject

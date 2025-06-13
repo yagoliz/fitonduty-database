@@ -1,0 +1,12 @@
+---
+# Database initialization settings
+init_database: true
+seed_database: true
+update_functions: true
+
+# Default seed configuration
+default_seed_config: "default_seed.yaml"
+
+# Database management settings
+create_backup_user: true
+setup_permissions: true

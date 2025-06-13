@@ -1,0 +1,22 @@
+---
+# Campaign 2025 specific variables
+fitonduty_db_name: "fitonduty_campaign_2025"
+db_environment: "campaign-2025"
+campaign_year: "2025"
+
+# Enhanced resources for newer campaign
+postgresql_shared_buffers: "1GB"
+postgresql_max_connections: 300
+enable_backup: false
+backup_retention_days: 20
+enable_ssl: false
+
+# Campaign-specific seed data
+seed_data_config: "campaign_2025_seed.yaml"
+admin_users:
+  - username: "admin"
+    role: "admin"
+
+# Performance optimization
+enable_connection_pooling: true
+connection_pool_size: 20

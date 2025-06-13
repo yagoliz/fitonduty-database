@@ -1,0 +1,110 @@
+---
+- name: Create database schema directory
+  file:
+    path: /opt/fitonduty-db
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
+- name: Copy database schema files
+  copy:
+    src: "{{ item }}"
+    dest: "/opt/fitonduty-db/{{ item | basename }}"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  with_fileglob:
+    - "files/sql/*.sql"
+  register: schema_files
+
+- name: Copy database functions
+  copy:
+    src: "{{ item }}"
+    dest: "/opt/fitonduty-db/functions/"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  with_fileglob:
+    - "files/sql/functions/*.sql"
+  register: function_files
+
+- name: Copy database initialization script
+  template:
+    src: init_database.py.j2
+    dest: /opt/fitonduty-db/init_database.py
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
+- name: Copy seed configuration
+  template:
+    src: db_seed.yml.j2
+    dest: /opt/fitonduty-db/db_seed.yml
+    owner: postgres
+    group: postgres
+    mode: '0644'
+
+- name: Install Python dependencies for database management
+  pip:
+    name:
+      - sqlalchemy
+      - psycopg2-binary
+      - pyyaml
+      - werkzeug
+    state: present
+
+- name: Initialize database schema
+  command: >
+    python3 /opt/fitonduty-db/init_database.py
+    --db-url "postgresql://{{ admin_user }}:{{ admin_password }}@localhost:5432/{{ database_name }}"
+    --seed
+    --config /opt/fitonduty-db/db_seed.yml
+    --set-permissions
+  become_user: postgres
+  register: db_init_result
+  changed_when: "'Tables created successfully' in db_init_result.stdout"
+
+- name: Apply database functions
+  postgresql_query:
+    db: "{{ database_name }}"
+    login_user: "{{ admin_user }}"
+    login_password: "{{ admin_password }}"
+    path_to_script: "/opt/fitonduty-db/functions/{{ item | basename }}"
+  with_fileglob:
+    - "files/sql/functions/*.sql"
+  when: function_files.changed
+
+- name: Set application user permissions
+  postgresql_query:
+    db: "{{ database_name }}"
+    login_user: "{{ admin_user }}"
+    login_password: "{{ admin_password }}"
+    query: |
+      GRANT USAGE ON SCHEMA public TO {{ app_user }};
+      GRANT SELECT ON ALL TABLES IN SCHEMA public TO {{ app_user }};
+      GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA public TO {{ app_user }};
+      GRANT INSERT, UPDATE, DELETE ON sessions TO {{ app_user }};
+      GRANT INSERT, UPDATE ON health_metrics TO {{ app_user }};
+      GRANT INSERT, UPDATE ON heart_rate_zones TO {{ app_user }};
+      GRANT INSERT, UPDATE ON user_notes TO {{ app_user }};
+      GRANT UPDATE (last_login) ON users TO {{ app_user }};
+      ALTER DEFAULT PRIVILEGES FOR ROLE {{ admin_user }} IN SCHEMA public 
+      GRANT SELECT ON TABLES TO {{ app_user }};
+
+- name: Create database backup script
+  template:
+    src: backup_database.sh.j2
+    dest: /opt/fitonduty-db/backup_database.sh
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
+- name: Setup daily backup cron job
+  cron:
+    name: "FitonDuty database backup"
+    hour: "2"
+    minute: "0"
+    job: "/opt/fitonduty-db/backup_database.sh"
+    user: postgres
+  when: enable_backup | default(true)

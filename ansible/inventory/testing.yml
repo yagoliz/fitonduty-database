@@ -1,0 +1,26 @@
+all:
+  children:
+    database_servers:
+      hosts:
+        testing:
+          ansible_host: 172.21.103.177
+          ansible_user: ubuntu
+          postgresql_listen_addresses: "'*'"
+          postgresql_max_connections: 50
+          postgresql_shared_buffers: "128MB"
+          postgresql_effective_cache_size: "512MB"
+
+  vars:
+    # Database configuration
+    fitonduty_db_name: "fitonduty_testing"
+    fitonduty_admin_user: "fitonduty_admin"
+    
+    # Environment settings
+    db_environment: "testing"
+    enable_backup: false
+    enable_ssl: false
+    debug_mode: true
+    
+    # Resource limits (smaller for testing)
+    postgresql_work_mem: "4MB"
+    postgresql_maintenance_work_mem: "64MB"

@@ -1,0 +1,23 @@
+---
+- name: Test Vault Variables
+  hosts: database_servers
+  gather_facts: yes
+  
+  tasks:
+    - name: Display all vault variables
+      debug:
+        msg: |
+          Environment: {{ db_environment | default('not set') }}
+          Admin password defined: {{ vault_admin_password is defined }}
+          App password defined: {{ vault_app_password is defined }}
+          Postgres password defined: {{ vault_postgres_password is defined }}
+          
+    - name: Show host_vars directory content (for debugging)
+      local_action:
+        module: command
+        cmd: find ./vars/{{ db_environment }}/ -name "vault.yml" -exec basename {} \;
+      register: vault_files
+      
+    - name: Display found vault files
+      debug:
+        var: vault_files.stdout_lines
