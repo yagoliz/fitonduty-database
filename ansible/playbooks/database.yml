@@ -47,12 +47,3 @@
         msg: |
           Table count result: {{ table_count }}
           User check result: {{ user_check }}
-    
-    - name: Display setup summary
-      debug:
-        msg: |
-          Database setup complete for {{ db_environment }}:
-          - Database: {{ database_name }}
-          - Admin user: {{ admin_user }}
-          - Current user: {{ user_check.query_result[0][0] if (user_check.query_result is defined and user_check.query_result|length > 0) else 'Unable to verify' }}
-          - Tables created: {{ table_count.query_result[0][0] if (table_count.query_result is defined and table_count.query_result|length > 0) else 'Unable to count' }}

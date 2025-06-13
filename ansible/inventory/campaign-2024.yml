@@ -2,10 +2,16 @@ all:
   children:
     database_servers:
       hosts:
-        campaign-2024:
+        campaign-2024-db:
           ansible_host: 172.21.103.174
           ansible_user: ubuntu
           postgresql_listen_addresses: "'*'"
           postgresql_max_connections: 200
           postgresql_shared_buffers: "512MB"
           postgresql_effective_cache_size: "2GB"
+
+    dashboard_servers:
+      hosts:
+        campaign-2024-dash:
+          ansible_host: 172.21.103.125
+          ansible_user: ubuntu

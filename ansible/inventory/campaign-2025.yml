@@ -2,7 +2,7 @@ all:
   children:
     database_servers:
       hosts:
-        campaign-2025:
+        campaign-2025-db:
           ansible_host: 172.21.103.115
           ansible_user: ubuntu
           postgresql_listen_addresses: "'*'"
@@ -10,3 +10,8 @@ all:
           postgresql_shared_buffers: "1GB"
           postgresql_effective_cache_size: "4GB"
     
+    dashboard_servers:
+      hosts:
+        campaign-2025-dash:
+          ansible_host: 172.21.103.125
+          ansible_user: ubuntu
