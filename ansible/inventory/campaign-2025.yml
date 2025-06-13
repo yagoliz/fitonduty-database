@@ -9,20 +9,4 @@ all:
           postgresql_max_connections: 300
           postgresql_shared_buffers: "1GB"
           postgresql_effective_cache_size: "4GB"
-
-  vars:
-    # Database configuration
-    fitonduty_db_name: "fitonduty_campaign_2025"
-    fitonduty_admin_user: "fitonduty_admin"
-    
-    # Environment settings
-    db_environment: "campaign-2025"
-    campaign_year: "2025"
-    enable_backup: false
-    backup_retention_days: 20
-    enable_ssl: false
-    
-    # Enhanced performance for newer campaign
-    postgresql_work_mem: "16MB"
-    postgresql_maintenance_work_mem: "512MB"
     

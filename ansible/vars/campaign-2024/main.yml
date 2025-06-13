@@ -1,18 +1,25 @@
 ---
-# Campaign 2024 specific variables
-fitonduty_db_name: "fitonduty_campaign_2024"
+# Main variables for campaign-2024 environment
+# Generated on Fri Jun 13 11:46:55 CEST 2025
+
+# Environment identification
 db_environment: "campaign-2024"
-campaign_year: "2024"
 
-# Production-level resources
-postgresql_shared_buffers: "512MB"
-postgresql_max_connections: 200
+# Database configuration
+fitonduty_db_name: "fitonduty_campaign-2024"
+fitonduty_admin_user: "dashboard_admin"
+fitonduty_app_user: "dashboard_user"
+
+# Environment-specific settings
 enable_backup: false
-backup_retention_days: 20
 enable_ssl: false
+debug_mode: false
 
-# Campaign-specific seed data
-seed_data_config: "campaign_2024_seed.yaml"
-admin_users:
-  - username: "admin"
-    role: "admin"
+# Performance tuning (adjust based on server capacity)
+postgresql_shared_buffers: "256MB"
+postgresql_max_connections: 100
+postgresql_effective_cache_size: "1GB"
+postgresql_work_mem: "4MB"
+postgresql_maintenance_work_mem: "64MB"
+
+# Add additional non-sensitive variables here

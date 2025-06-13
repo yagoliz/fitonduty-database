@@ -2,10 +2,15 @@
 - name: Setup FitonDuty Database Infrastructure
   hosts: database_servers
   become: yes
+  vars_files:
+    - "../vars/{{ db_environment }}/main.yml"
+    - "../vars/{{ db_environment }}/vault.yml"
   vars:
     database_name: "{{ fitonduty_db_name }}"
     admin_user: "{{ fitonduty_admin_user }}"
     admin_password: "{{ vault_admin_password }}"
+    app_user: "{{ fitonduty_app_user }}"
+    app_password: "{{ vault_app_password }}"
     postgres_password: "{{ vault_postgres_password | default('') }}"
 
   pre_tasks:
@@ -21,16 +26,33 @@
   post_tasks:
     - name: Verify database setup
       postgresql_query:
-        db: "{{ database_name }}"
-        login_user: "{{ admin_user }}"
-        login_password: "{{ admin_password }}"
+        db: "{{ fitonduty_db_name }}"
+        login_host: localhost  # Force TCP connection instead of Unix socket
+        login_user: "{{ fitonduty_admin_user }}"
+        login_password: "{{ vault_admin_password }}"
         query: "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'"
       register: table_count
-      
+        
+    - name: Verify admin user can connect
+      postgresql_query:
+        db: "{{ database_name }}"
+        login_host: localhost
+        login_user: "{{ admin_user }}"
+        login_password: "{{ admin_password }}"
+        query: "SELECT current_user, session_user"
+      register: user_check
+    
+    - name: Debug query results
+      debug:
+        msg: |
+          Table count result: {{ table_count }}
+          User check result: {{ user_check }}
+    
     - name: Display setup summary
       debug:
         msg: |
           Database setup complete for {{ db_environment }}:
           - Database: {{ database_name }}
           - Admin user: {{ admin_user }}
-          - Tables created: {{ table_count.query_result[0][0] if table_count.query_result else 'N/A' }}
+          - Current user: {{ user_check.query_result[0][0] if (user_check.query_result is defined and user_check.query_result|length > 0) else 'Unable to verify' }}
+          - Tables created: {{ table_count.query_result[0][0] if (table_count.query_result is defined and table_count.query_result|length > 0) else 'Unable to count' }}

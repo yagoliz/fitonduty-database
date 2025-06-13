@@ -13,7 +13,8 @@ all:
   vars:
     # Database configuration
     fitonduty_db_name: "fitonduty_testing"
-    fitonduty_admin_user: "fitonduty_admin"
+    fitonduty_admin_user: "dashboard_admin"
+    fitonduty_app_user: "dashboard_user"
     
     # Environment settings
     db_environment: "testing"

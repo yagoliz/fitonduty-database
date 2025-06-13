@@ -1,11 +1,29 @@
-# Custom
-.vscode
-.DS_Store
-*yaml
-.vault_pass
+# Generated configuration files (contain secrets)
+config/seed-data/*-seed.yml
+ansible/vars/*/vault.yml
+ansible/vars/*/main.yml
 
-# Env data
-*.sh
+# Keep templates and examples
+!config/seed-data/template-seed.yml
+!config/seed-data/example-*.yml
+
+# Vault password files
+.vault_pass*
+ansible/.vault_pass*
+
+# Environment-specific configs (may contain sensitive data)
+config/environments/*.yml
+!config/environments/template.yml
+!config/environments/example-*.yml
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Local development files
+.env
+.env.local
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

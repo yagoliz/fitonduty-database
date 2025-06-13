@@ -14,6 +14,7 @@ def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description='Update database functions')
     parser.add_argument('--db-url', help='Database connection URL for admin')
+    parser.add_argument('--project-root', help='Root Directory for function finding', default=None)
     args = parser.parse_args()
     
     # Load environment variables
@@ -36,7 +37,7 @@ def main():
         
         # Get all SQL function files
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(script_dir)
+        project_root = args.project_root if args.project_root else os.path.dirname(script_dir)
         sql_dir = os.path.join(project_root, 'schema', 'functions')
         
         if not os.path.exists(sql_dir):

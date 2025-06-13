@@ -1,0 +1,22 @@
+---
+# Template for seed data configuration
+# Copy this to {environment}-seed.yml and customize
+
+database:
+  # Connection details provided externally
+
+admins:
+  - username: "admin"
+    password: "CHANGE_ME"
+
+groups:
+  - name: "Main Group"
+    description: "Primary participant group"
+    created_by: "admin"
+
+participants:
+  - username: "demo_participant"
+    password: "CHANGE_ME"
+    groups: "Main Group"
+    generate_data: true
+    data_days: 60

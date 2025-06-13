@@ -1,0 +1,26 @@
+---
+# Template for environment configuration
+# Copy this to {environment}.yml and customize
+
+environment:
+  name: "ENVIRONMENT_NAME"
+  description: "Description of this environment"
+
+database:
+  name: "fitonduty_ENVIRONMENT_NAME"
+  admin_user: "dashboard_admin"
+  app_user: "dashboard_user"
+  host: "localhost"
+  port: 5432
+
+performance:
+  shared_buffers: "256MB"
+  effective_cache_size: "1GB"
+  max_connections: 100
+  work_mem: "4MB"
+  maintenance_work_mem: "64MB"
+
+features:
+  enable_backup: false
+  enable_ssl: false
+  debug_mode: false

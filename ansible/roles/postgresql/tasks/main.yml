@@ -5,7 +5,6 @@
       - postgresql-{{ postgresql_version }}
       - postgresql-client-{{ postgresql_version }}
       - postgresql-contrib-{{ postgresql_version }}
-      - python3-psycopg2
     state: present
 
 - name: Ensure PostgreSQL is running and enabled
@@ -22,17 +21,81 @@
   become_user: postgres
   when: postgres_password is defined
 
+- name: Configure PostgreSQL listen_addresses
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?listen_addresses\\s*="
+    line: "listen_addresses = {{ postgresql_listen_addresses | default(\"localhost\") }}"
+    backup: yes
+  notify: restart postgresql
+
+- name: Configure PostgreSQL port
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?port\\s*="
+    line: "port = {{ postgresql_port | default(5432) }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL max_connections
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?max_connections\\s*="
+    line: "max_connections = {{ postgresql_max_connections | default(100) }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL shared_buffers
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?shared_buffers\\s*="
+    line: "shared_buffers = {{ postgresql_shared_buffers | default('256MB') }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL effective_cache_size
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?effective_cache_size\\s*="
+    line: "effective_cache_size = {{ postgresql_effective_cache_size | default('1GB') }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL work_mem
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?work_mem\\s*="
+    line: "work_mem = {{ postgresql_work_mem | default('4MB') }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL maintenance_work_mem
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?maintenance_work_mem\\s*="
+    line: "maintenance_work_mem = {{ postgresql_maintenance_work_mem | default('64MB') }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL wal_level
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?wal_level\\s*="
+    line: "wal_level = replica"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL max_wal_senders
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?max_wal_senders\\s*="
+    line: "max_wal_senders = 3"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL checkpoint_completion_target
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?checkpoint_completion_target\\s*="
+    line: "checkpoint_completion_target = 0.9"
+  notify: restart postgresql
+
 - name: Configure PostgreSQL authentication
   template:
     src: pg_hba.conf.j2
     dest: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
-    backup: yes
-  notify: restart postgresql
-
-- name: Configure PostgreSQL settings
-  template:
-    src: postgresql.conf.j2
-    dest: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
     backup: yes
   notify: restart postgresql
 
@@ -44,7 +107,7 @@
 
 - name: Create admin user
   postgresql_user:
-    db: "{{ database_name }}"
+    login_db: "{{ database_name }}"
     name: "{{ admin_user }}"
     password: "{{ admin_password }}"
     priv: "ALL"
@@ -54,7 +117,7 @@
 
 - name: Create application user
   postgresql_user:
-    db: "{{ database_name }}"
+    login_db: "{{ database_name }}"
     name: "{{ app_user }}"
     password: "{{ app_password }}"
     state: present

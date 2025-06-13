@@ -1,5 +1,5 @@
 ---
-- name: Create database schema directory
+- name: Create database working directory
   file:
     path: /opt/fitonduty-db
     state: directory
@@ -7,104 +7,136 @@
     group: postgres
     mode: '0755'
 
-- name: Copy database schema files
-  copy:
-    src: "{{ item }}"
-    dest: "/opt/fitonduty-db/{{ item | basename }}"
-    owner: postgres
-    group: postgres
-    mode: '0644'
-  with_fileglob:
-    - "files/sql/*.sql"
-  register: schema_files
+- name: Install system Python dependencies
+  apt:
+    name:
+      - python3-venv
+      - python3-pip
+      - python3-dev
+      - libpq-dev  # Required for psycopg2
+    state: present
+    update_cache: yes
 
-- name: Copy database functions
-  copy:
-    src: "{{ item }}"
-    dest: "/opt/fitonduty-db/functions/"
-    owner: postgres
-    group: postgres
-    mode: '0644'
-  with_fileglob:
-    - "files/sql/functions/*.sql"
-  register: function_files
+- name: Create virtual environment for database management
+  command: python3 -m venv /opt/fitonduty-db/venv
+  args:
+    creates: /opt/fitonduty-db/venv/bin/python
+  become_user: postgres
 
-- name: Copy database initialization script
-  template:
-    src: init_database.py.j2
-    dest: /opt/fitonduty-db/init_database.py
+- name: Upgrade pip in virtual environment
+  pip:
+    name: pip
+    virtualenv: /opt/fitonduty-db/venv
+    state: latest
+
+- name: Install Python dependencies in virtual environment
+  pip:
+    name:
+      - sqlalchemy>=2.0.0
+      - psycopg2-binary
+      - pyyaml
+      - werkzeug
+      - python-dotenv
+    virtualenv: /opt/fitonduty-db/venv
+    state: present
+
+- name: Copy database management script
+  copy:
+    src: "{{ playbook_dir }}/../../python/db_manager.py"
+    dest: /opt/fitonduty-db/db_manager.py
     owner: postgres
     group: postgres
     mode: '0755'
 
-- name: Copy seed configuration
-  template:
-    src: db_seed.yml.j2
+- name: Copy sql function generator
+  copy:
+    src: "{{ playbook_dir }}/../../python/migration_runner.py"
+    dest: /opt/fitonduty-db/migration_runner.py
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
+- name: Copy database schema files
+  copy:
+    src: "{{ playbook_dir }}/../../schema/"
+    dest: /opt/fitonduty-db/schema/
+    owner: postgres
+    group: postgres
+    mode: '0644'
+
+- name: Copy environment configuration
+  copy:
+    src: "{{ playbook_dir }}/../../config/environments/{{ db_environment }}.yml"
+    dest: /opt/fitonduty-db/db_config.yml
+    owner: postgres
+    group: postgres
+    mode: '0644'
+
+- name: Copy seed data configuration
+  copy:
+    src: "{{ playbook_dir }}/../../config/seed-data/{{ db_environment }}-seed.yml"
     dest: /opt/fitonduty-db/db_seed.yml
     owner: postgres
     group: postgres
     mode: '0644'
 
-- name: Install Python dependencies for database management
-  pip:
-    name:
-      - sqlalchemy
-      - psycopg2-binary
-      - pyyaml
-      - werkzeug
-    state: present
-
-- name: Initialize database schema
+- name: Initialize database schema as postgres user
   command: >
-    python3 /opt/fitonduty-db/init_database.py
-    --db-url "postgresql://{{ admin_user }}:{{ admin_password }}@localhost:5432/{{ database_name }}"
-    --seed
+    /opt/fitonduty-db/venv/bin/python /opt/fitonduty-db/db_manager.py
+    --db-url "postgresql://postgres:{{ vault_postgres_password }}@localhost:5432/{{ fitonduty_db_name }}"
     --config /opt/fitonduty-db/db_seed.yml
+    --seed
     --set-permissions
   become_user: postgres
+  environment:
+    DB_ENVIRONMENT: "{{ db_environment }}"
   register: db_init_result
-  changed_when: "'Tables created successfully' in db_init_result.stdout"
+  changed_when: "'successfully' in db_init_result.stdout"
 
-- name: Apply database functions
-  postgresql_query:
-    db: "{{ database_name }}"
-    login_user: "{{ admin_user }}"
-    login_password: "{{ admin_password }}"
-    path_to_script: "/opt/fitonduty-db/functions/{{ item | basename }}"
-  with_fileglob:
-    - "files/sql/functions/*.sql"
-  when: function_files.changed
+- name: 
+  command: >
+    /opt/fitonduty-db/venv/bin/python /opt/fitonduty-db/migration_runner.py
+    --db-url "postgresql://postgres:{{ vault_postgres_password }}@localhost:5432/{{ fitonduty_db_name }}"
+    --project-root /opt/fitonduty-db
+  become_user: postgres
+  environment:
+    DB_ENVIRONMENT: "{{ db_environment }}"
+  register: db_init_result
+  changed_when: "'successfully' in db_init_result.stdout"
 
-- name: Set application user permissions
+- name: Transfer ownership of all database objects to admin user
   postgresql_query:
-    db: "{{ database_name }}"
-    login_user: "{{ admin_user }}"
-    login_password: "{{ admin_password }}"
+    login_db: "{{ fitonduty_db_name }}"
+    login_user: postgres
+    login_password: "{{ vault_postgres_password }}"
     query: |
-      GRANT USAGE ON SCHEMA public TO {{ app_user }};
-      GRANT SELECT ON ALL TABLES IN SCHEMA public TO {{ app_user }};
-      GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA public TO {{ app_user }};
-      GRANT INSERT, UPDATE, DELETE ON sessions TO {{ app_user }};
-      GRANT INSERT, UPDATE ON health_metrics TO {{ app_user }};
-      GRANT INSERT, UPDATE ON heart_rate_zones TO {{ app_user }};
-      GRANT INSERT, UPDATE ON user_notes TO {{ app_user }};
-      GRANT UPDATE (last_login) ON users TO {{ app_user }};
-      ALTER DEFAULT PRIVILEGES FOR ROLE {{ admin_user }} IN SCHEMA public 
-      GRANT SELECT ON TABLES TO {{ app_user }};
-
-- name: Create database backup script
-  template:
-    src: backup_database.sh.j2
-    dest: /opt/fitonduty-db/backup_database.sh
-    owner: postgres
-    group: postgres
-    mode: '0755'
-
-- name: Setup daily backup cron job
-  cron:
-    name: "FitonDuty database backup"
-    hour: "2"
-    minute: "0"
-    job: "/opt/fitonduty-db/backup_database.sh"
-    user: postgres
-  when: enable_backup | default(true)
+      -- Transfer database ownership
+      ALTER DATABASE {{ fitonduty_db_name }} OWNER TO {{ fitonduty_admin_user }};
+      
+      -- Transfer all table ownership
+      DO $$
+      DECLARE
+          r RECORD;
+      BEGIN
+          FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+          LOOP
+              EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO {{ fitonduty_admin_user }}';
+          END LOOP;
+      END $$;
+      
+      -- Transfer all sequence ownership
+      DO $$
+      DECLARE
+          r RECORD;
+      BEGIN
+          FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
+          LOOP
+              EXECUTE 'ALTER SEQUENCE public.' || quote_ident(r.sequencename) || ' OWNER TO {{ fitonduty_admin_user }}';
+          END LOOP;
+      END $$;
+      
+      -- Grant schema privileges
+      GRANT ALL ON SCHEMA public TO {{ fitonduty_admin_user }};
+      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {{ fitonduty_admin_user }};
+      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {{ fitonduty_admin_user }};
+  become_user: postgres
