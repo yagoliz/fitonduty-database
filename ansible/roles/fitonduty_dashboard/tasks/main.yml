@@ -1,0 +1,50 @@
+---
+- name: Install dependencies
+  apt:
+    name:
+      - podman
+      - git
+    state: present
+    update_cache: yes
+
+- name: Create application directory
+  file:
+    path: /opt/fitonduty
+    state: directory
+    mode: '0755'
+
+- name: Clone fitonduty-dashboard Repository
+  git:
+    repo: "https://github.com/yagoliz/fitonduty-dashboard.git"
+    dest: /opt/fitonduty/fitonduty-dashboard
+
+- name: Create environment file
+  template:
+    src: env.j2
+    dest: "/opt/fitonduty/fitonduty-dashboard/.env"
+    mode: '0600'
+
+- name: Build container
+  podman_image:
+    name: fitonduty_dashboard
+    path: /opt/fitonduty/fitonduty-dashboard
+    build:
+      cache: no
+      force_rm: true
+      format: oci
+
+- name: Create podman service file
+  copy:
+    src: fitonduty-dashboard.container
+    dest: /etc/containers/systemd/
+    mode: '0755'
+
+- name: Reload systemd user daemon for fitonduty
+  systemd:
+    daemon_reload: yes
+
+- name: Restart fitonduty container
+  systemd:
+    enabled: yes
+    state: restarted
+    name: fitonduty-dashboard

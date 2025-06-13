@@ -1,0 +1,12 @@
+[Unit]
+Description=The FitonDuty Dashboard Container
+After=local-fs.target
+
+[Container]
+Image=localhost/fitonduty_dashboard
+EnvironmentFile=/opt/fitonduty/fitonduty-dashboard/.env
+PublishPort=8050:8050
+
+[Install]
+# Start by default on boot
+WantedBy=multi-user.target default.target

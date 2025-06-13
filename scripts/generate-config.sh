@@ -123,8 +123,8 @@ environment:
 
 database:
   name: "fitonduty_$ENVIRONMENT"
-  admin_user: "fitonduty_admin"
-  app_user: "fitonduty_user"
+  admin_user: "dashboard_admin"
+  app_user: "dashboard_user"
   host: "localhost"
   port: 5432
 
@@ -271,6 +271,9 @@ generate_vault_template() {
 vault_admin_password: "$ADMIN_PASS"
 vault_app_password: "$APP_PASS"
 vault_postgres_password: "$POSTGRES_PASS"
+
+# Flask keys
+vault_flask_key: "$(openssl rand hex 48)"
 
 # Additional secrets can be added here
 # vault_api_secret_key: "$(openssl rand -base64 32)"
