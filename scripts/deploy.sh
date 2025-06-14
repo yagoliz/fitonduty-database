@@ -22,8 +22,8 @@ Deploy FitonDuty database infrastructure using Ansible
 
 ENVIRONMENTS:
     testing         - Testing environment
-    campaign-2024   - Campaign 2024 production
-    campaign-2025   - Campaign 2025 production
+    campaign_2024   - Campaign 2024 production
+    campaign_2025   - Campaign 2025 production
 
 OPTIONS:
     -c, --check         Run in check mode (dry run)
@@ -34,8 +34,8 @@ OPTIONS:
 
 EXAMPLES:
     $0 testing
-    $0 campaign-2024 --check
-    $0 campaign-2025 --verbose -vv
+    $0 campaign_2024 --check
+    $0 campaign_2025 --verbose -vv
     $0 testing --tags "postgresql,database"
 
 EOF

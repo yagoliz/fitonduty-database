@@ -5,6 +5,8 @@
       - postgresql-{{ postgresql_version }}
       - postgresql-client-{{ postgresql_version }}
       - postgresql-contrib-{{ postgresql_version }}
+      - libpq-dev  # Required for psycopg2
+      - python3-psycopg2
     state: present
 
 - name: Ensure PostgreSQL is running and enabled

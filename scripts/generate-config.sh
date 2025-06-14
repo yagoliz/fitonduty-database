@@ -17,7 +17,7 @@ Usage: $0 [OPTIONS] ENVIRONMENT
 Generate configuration files for a new environment
 
 ENVIRONMENT:
-    Name of the environment (e.g., campaign-2026, development, staging)
+    Name of the environment (e.g., campaign_2026, development, staging)
 
 OPTIONS:
     --seed          Generate seed data configuration
@@ -27,7 +27,7 @@ OPTIONS:
     -h, --help      Show this help
 
 EXAMPLES:
-    $0 --all campaign-2026
+    $0 --all campaign_2026
     $0 --seed development
     $0 --vault staging --force
 
@@ -273,7 +273,7 @@ vault_app_password: "$APP_PASS"
 vault_postgres_password: "$POSTGRES_PASS"
 
 # Flask keys
-vault_flask_key: "$(openssl rand hex 48)"
+vault_flask_key: "$(openssl rand -hex 48)"
 
 # Additional secrets can be added here
 # vault_api_secret_key: "$(openssl rand -base64 32)"
@@ -304,8 +304,8 @@ db_environment: "$ENVIRONMENT"
 
 # Database configuration
 fitonduty_db_name: "fitonduty_$ENVIRONMENT"
-fitonduty_admin_user: "fitonduty_admin"
-fitonduty_app_user: "fitonduty_user"
+fitonduty_admin_user: "dashboard_admin"
+fitonduty_app_user: "dashboard_user"
 
 # Environment-specific settings
 enable_backup: false

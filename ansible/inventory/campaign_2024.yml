@@ -15,3 +15,7 @@ all:
         campaign-2024-dash:
           ansible_host: 172.21.103.125
           ansible_user: ubuntu
+
+  vars: 
+    # Environment settings
+    db_environment: "campaign_2024"

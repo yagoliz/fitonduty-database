@@ -1,10 +1,15 @@
+# Secret folders
+.data
+
 # Generated configuration files (contain secrets)
 config/seed-data/*-seed.yml
+config/seed-data/*_seed.yml
 ansible/vars/*/vault.yml
 ansible/vars/*/main.yml
 
 # Keep templates and examples
 !config/seed-data/template-seed.yml
+!config/seed-data/template_seed.yml
 !config/seed-data/example-*.yml
 
 # Vault password files

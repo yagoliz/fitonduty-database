@@ -13,7 +13,6 @@
       - python3-venv
       - python3-pip
       - python3-dev
-      - libpq-dev  # Required for psycopg2
     state: present
     update_cache: yes
 
@@ -74,7 +73,7 @@
 
 - name: Copy seed data configuration
   copy:
-    src: "{{ playbook_dir }}/../../config/seed-data/{{ db_environment }}-seed.yml"
+    src: "{{ playbook_dir }}/../../config/seed-data/{{ db_environment }}_seed.yml"
     dest: /opt/fitonduty-db/db_seed.yml
     owner: postgres
     group: postgres
@@ -87,6 +86,7 @@
     --config /opt/fitonduty-db/db_seed.yml
     --seed
     --set-permissions
+    --drop
   become_user: postgres
   environment:
     DB_ENVIRONMENT: "{{ db_environment }}"
