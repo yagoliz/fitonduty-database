@@ -1,0 +1,93 @@
+---
+- name: Update FitonDuty Dashboard
+  hosts: dashboard_servers
+  become: yes
+  vars_files:
+    - "../vars/{{ db_environment }}/main.yml"
+    - "../vars/{{ db_environment }}/vault.yml"
+  vars:
+    git_branch: "{{ dashboard_branch | default('main') }}"
+    force_container_rebuild: "{{ force_rebuild | default(false) | bool }}"
+    backup_container_before_update: "{{ backup_before_update | default(true) | bool }}"
+
+  tasks:
+    - name: Stop dashboard service before update
+      systemd:
+        name: fitonduty-dashboard
+        state: stopped
+      register: service_stopped
+
+    - name: Create backups directory
+      file:
+        path: /opt/fitonduty/backups
+        state: directory
+        mode: '0755'
+
+    - name: Create backup of current deployment
+      command: >
+        tar -czf /opt/fitonduty/backups/dashboard-backup-{{ ansible_date_time.epoch }}.tar.gz
+        -C /opt/fitonduty fitonduty-dashboard
+      when: backup_container_before_update
+
+    - name: Clean old backups (keep last 5)
+      shell: |
+        cd /opt/fitonduty/backups
+        ls -t dashboard-backup-*.tar.gz | tail -n +6 | xargs -r rm
+      when: backup_container_before_update
+
+    - name: Pull latest code from git
+      git:
+        repo: "https://github.com/yagoliz/fitonduty-dashboard.git"
+        dest: /opt/fitonduty/fitonduty-dashboard
+        version: "{{ git_branch }}"
+        force: yes
+      register: git_pull_result
+
+    - name: Check if rebuild is needed
+      set_fact:
+        needs_rebuild: "{{ force_container_rebuild or git_pull_result.changed }}"
+
+    - name: Remove old container image
+      command: podman rmi localhost/fitonduty_dashboard
+      ignore_errors: yes
+      when: needs_rebuild
+
+    - name: Build new container image
+      podman_image:
+        name: fitonduty_dashboard
+        path: /opt/fitonduty/fitonduty-dashboard
+        build:
+          cache: no
+          force_rm: true
+          format: oci
+      when: needs_rebuild
+      register: build_result
+
+    - name: Start dashboard service
+      systemd:
+        name: fitonduty-dashboard
+        state: started
+        enabled: yes
+
+    - name: Wait for application to start
+      wait_for:
+        port: 8050
+        delay: 5
+        timeout: 60
+
+    - name: Verify application is responding
+      uri:
+        url: "http://localhost:8050"
+        method: GET
+        status_code: 200
+        timeout: 10
+      retries: 3
+      delay: 5
+
+    - name: Display update summary
+      debug:
+        msg: |
+          Dashboard update completed successfully!
+          Git changes: {{ 'Yes' if git_pull_result.changed else 'No' }}
+          Image rebuilt: {{ 'Yes' if needs_rebuild else 'No' }}
+          Service restarted: {{ 'Yes' if service_stopped.changed else 'No' }}
