@@ -15,14 +15,20 @@ Options:
     --anomaly-interval  Interval in minutes for anomaly data (default: 5)
     --skip-anomalies  Skip generating anomaly data
 """
-import os
-import sys
+
 import argparse
-import yaml
+from datetime import datetime, timedelta
+import glob
+import os
+from pathlib import Path
+import random
+import sys
+
 from sqlalchemy import create_engine, text
 from werkzeug.security import generate_password_hash
-from datetime import datetime, timedelta
-import random
+import yaml
+
+from function_manager import execute_function_files
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -109,256 +115,92 @@ def create_db_engine(args, config):
     print(f"Using default database URL: {db_url}")
     return create_engine(db_url)
 
+
+def execute_schema_files(engine):
+    """Execute all schema files in order"""
+    
+    # Get the schema directory relative to this script
+    script_dir = Path(__file__).parent
+    schema_dir = script_dir.parent / "schema" / "tables"
+    
+    if not schema_dir.exists():
+        print(f"Schema directory not found: {schema_dir}")
+        return False
+    
+    # Get all .sql files and sort them by filename (001_, 002_, etc.)
+    schema_files = sorted(glob.glob(str(schema_dir / "*.sql")))
+    
+    if not schema_files:
+        print(f"No schema files found in {schema_dir}")
+        return False
+    
+    print(f"Found {len(schema_files)} schema files to execute")
+    
+    try:
+        with engine.begin() as conn:
+            for schema_file in schema_files:
+                filename = os.path.basename(schema_file)
+                print(f"Executing schema file: {filename}")
+                
+                with open(schema_file, 'r') as f:
+                    sql_content = f.read()
+                
+                # Split by semicolon and execute each statement
+                statements = [stmt.strip() for stmt in sql_content.split(';') if stmt.strip()]
+                
+                for statement in statements:
+                    if statement:
+                        conn.execute(text(statement))
+                
+                print(f"✓ Executed {filename}")
+        
+        print("All schema files executed successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"Error executing schema files: {e}")
+        return False
+
+
 def create_tables(engine):
-    """Create all database tables"""
-    # SQL statements to create tables
-    sql_statements = [
-        # Users Table
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password_hash VARCHAR(255) NOT NULL,
-            role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'participant')),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_login TIMESTAMP,
-            is_active BOOLEAN DEFAULT TRUE
-        )
-        """,
-        
-        # Groups Table
-        """
-        CREATE TABLE IF NOT EXISTS groups (
-            id SERIAL PRIMARY KEY,
-            group_name VARCHAR(50) UNIQUE NOT NULL,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            created_by INTEGER REFERENCES users(id)
-        )
-        """,
-        
-        # User-Group Relationship Table
-        """
-        CREATE TABLE IF NOT EXISTS user_groups (
-            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
-            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (user_id, group_id)
-        )
-        """,
-        
-        # Health Metrics Table
-        """
-        CREATE TABLE IF NOT EXISTS health_metrics (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            date DATE NOT NULL,
-            resting_hr INTEGER,
-            max_hr INTEGER,
-            sleep_hours NUMERIC(4,2),
-            hrv_rest INTEGER,
-            step_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (user_id, date)
-        )
-        """,
-        
-        # Heart Rate Zones Table
-        """
-        CREATE TABLE IF NOT EXISTS heart_rate_zones (
-            id SERIAL PRIMARY KEY,
-            health_metric_id INTEGER NOT NULL REFERENCES health_metrics(id) ON DELETE CASCADE UNIQUE,
-            very_light_percent NUMERIC(5,2),
-            light_percent NUMERIC(5,2),
-            moderate_percent NUMERIC(5,2),
-            intense_percent NUMERIC(5,2),
-            beast_mode_percent NUMERIC(5,2),
-            CHECK (
-                (very_light_percent + light_percent + moderate_percent + intense_percent + 
-                beast_mode_percent) BETWEEN 99.0 AND 101.0
-            )
-        )
-        """,
-
-        # Movement Speed Table
-        """
-        CREATE TABLE IF NOT EXISTS movement_speeds (
-            id SERIAL PRIMARY KEY,
-            health_metric_id INTEGER NOT NULL REFERENCES health_metrics(id) ON DELETE CASCADE UNIQUE,
-            walking_minutes INTEGER DEFAULT 0,
-            walking_fast_minutes INTEGER DEFAULT 0,
-            jogging_minutes INTEGER DEFAULT 0,
-            running_minutes INTEGER DEFAULT 0
-        )
-        """,
-        
-        # Sessions Table
-        """
-        CREATE TABLE IF NOT EXISTS sessions (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            session_token VARCHAR(255) UNIQUE NOT NULL,
-            ip_address VARCHAR(45),
-            user_agent TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            expires_at TIMESTAMP NOT NULL
-        )
-        """,
-        
-        # User Notes Table
-        """
-        CREATE TABLE IF NOT EXISTS user_notes (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            author_id INTEGER NOT NULL REFERENCES users(id),
-            note TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-
-        # Anomaly Detection Table
-        """
-        CREATE TABLE IF NOT EXISTS anomaly_scores (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            date DATE NOT NULL,
-            time_slot INTEGER NOT NULL, -- Minutes from midnight (0-1439)
-            score NUMERIC(7,4) NOT NULL, 
-            label VARCHAR(50), -- Optional classification label
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (user_id, date, time_slot)
-        )
-        """,
-        
-        # Create indexes for performance
-        """
-        CREATE INDEX IF NOT EXISTS idx_health_metrics_user_date ON health_metrics(user_id, date)
-        """,
-        
-        """
-        CREATE INDEX IF NOT EXISTS idx_user_groups_group ON user_groups(group_id)
-        """,
-        
-        """
-        CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token)
-        """,
-
-        """
-        CREATE INDEX IF NOT EXISTS idx_anomaly_user_date ON anomaly_scores(user_id, date)
-        """,
-
-        """
-        CREATE INDEX IF NOT EXISTS idx_anomaly_date_range ON anomaly_scores(date)
-        """
-    ]
-    
-    # Execute all statements
-    with engine.begin() as conn:
-        for statement in sql_statements:
-            conn.execute(text(statement))
-    
-    print("Tables created successfully!")
-
-
-def set_user_permissions(engine):
-    """
-    Grant appropriate permissions to dashboard_user role
-    """
-    permission_statements = [
-        # Grant base permissions
-        """
-        GRANT USAGE ON SCHEMA public TO dashboard_user;
-        """,
-        """
-        GRANT SELECT ON ALL TABLES IN SCHEMA public TO dashboard_user;
-        """,
-        """
-        GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA public TO dashboard_user;
-        """,
-        
-        # Grant specific write permissions
-        """
-        GRANT INSERT, UPDATE, DELETE ON sessions TO dashboard_user;
-        """,
-        """
-        GRANT USAGE ON SEQUENCE sessions_id_seq TO dashboard_user;
-        """,
-        """
-        GRANT INSERT, UPDATE ON health_metrics TO dashboard_user;
-        """,
-        """
-        GRANT USAGE ON SEQUENCE health_metrics_id_seq TO dashboard_user;
-        """,
-        """
-        GRANT INSERT, UPDATE ON heart_rate_zones TO dashboard_user;
-        """,
-        """
-        GRANT USAGE ON SEQUENCE heart_rate_zones_id_seq TO dashboard_user;
-        """,
-        """
-        GRANT INSERT, UPDATE ON user_notes TO dashboard_user;
-        """,
-        """
-        GRANT USAGE ON SEQUENCE user_notes_id_seq TO dashboard_user;
-        """,
-        """
-        GRANT SELECT ON users TO dashboard_user;
-        """,
-        """
-        GRANT UPDATE (last_login) ON users TO dashboard_user;
-        """,
-        """
-        GRANT USAGE ON SEQUENCE users_id_seq TO dashboard_user;
-        """,
-        
-        # Default privileges for future objects
-        """
-        ALTER DEFAULT PRIVILEGES FOR ROLE dashboard_admin IN SCHEMA public 
-        GRANT SELECT ON TABLES TO dashboard_user;
-        """,
-        """
-        ALTER DEFAULT PRIVILEGES FOR ROLE dashboard_admin IN SCHEMA public 
-        GRANT SELECT, USAGE ON SEQUENCES TO dashboard_user;
-        """,
-        """
-        ALTER DEFAULT PRIVILEGES FOR ROLE dashboard_admin IN SCHEMA public 
-        GRANT EXECUTE ON FUNCTIONS TO dashboard_user;
-        """
-    ]
-    
-    with engine.begin() as conn:
-        for statement in permission_statements:
-            try:
-                conn.execute(text(statement))
-                print(f"Executed permission statement: {statement.strip()}")
-            except Exception as e:
-                print(f"Error setting permission: {e}")
-                print(f"Statement: {statement}")
-
-    print("User permissions set successfully!")
+    """Create all database tables using schema files"""
+    print("Creating database tables from schema files...")
+    return execute_schema_files(engine)
 
 
 def drop_tables(engine):
     """Drop all tables from the database"""
-    # List of tables to drop in correct order for foreign key constraints
-    tables = [
-        "user_notes",
-        "sessions",
-        "heart_rate_zones",
-        "health_metrics",
-        "user_groups",
-        "groups",
-        "users"
-    ]
+    print("Dropping all tables...")
     
-    drop_statements = [f"DROP TABLE IF EXISTS {table} CASCADE" for table in tables]
+    # Get list of tables to drop
+    drop_sql = """
+    DO $$ 
+    DECLARE 
+        r RECORD;
+    BEGIN
+        -- Drop all tables in the public schema
+        FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') 
+        LOOP
+            EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+        END LOOP;
+        
+        -- Drop all sequences in the public schema
+        FOR r IN (SELECT sequencename FROM pg_sequences WHERE schemaname = 'public') 
+        LOOP
+            EXECUTE 'DROP SEQUENCE IF EXISTS public.' || quote_ident(r.sequencename) || ' CASCADE';
+        END LOOP;
+    END $$;
+    """
     
-    # Execute all drop statements
-    with engine.begin() as conn:
-        for statement in drop_statements:
-            conn.execute(text(statement))
-    
-    print("Tables dropped successfully!")
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(drop_sql))
+        print("All tables and sequences dropped successfully!")
+        return True
+    except Exception as e:
+        print(f"Error dropping tables: {e}")
+        return False
+
 
 def import_mock_data(engine, user_id, start_date, end_date, overwrite=False):
     """
@@ -602,6 +444,10 @@ def save_health_metrics(engine, user_id, date, metrics):
     Returns:
         bool: True if successful, False otherwise
     """
+
+    # Calculate data volume
+    data_volume = calculate_data_volume(metrics)
+
     # Validate inputs
     if not isinstance(user_id, int) or user_id <= 0:
         print(f"Error: Invalid user ID: {user_id}")
@@ -618,9 +464,9 @@ def save_health_metrics(engine, user_id, date, metrics):
     # First insert or update the health_metrics record
     upsert_metrics_query = text("""
         INSERT INTO health_metrics 
-            (user_id, date, resting_hr, max_hr, sleep_hours, hrv_rest, step_count)
+            (user_id, date, resting_hr, max_hr, sleep_hours, hrv_rest, step_count, data_volume)
         VALUES 
-            (:user_id, :date, :resting_hr, :max_hr, :sleep_hours, :hrv_rest, :step_count)
+            (:user_id, :date, :resting_hr, :max_hr, :sleep_hours, :hrv_rest, :step_count, :data_volume)
         ON CONFLICT (user_id, date) 
         DO UPDATE SET
             resting_hr = :resting_hr,
@@ -628,6 +474,7 @@ def save_health_metrics(engine, user_id, date, metrics):
             sleep_hours = :sleep_hours,
             hrv_rest = :hrv_rest,
             step_count = :step_count,
+            data_volume = :data_volume,
             created_at = CURRENT_TIMESTAMP
         RETURNING id
     """)
@@ -678,6 +525,7 @@ def save_health_metrics(engine, user_id, date, metrics):
                     "sleep_hours": metrics.get('sleep_hours'),
                     "hrv_rest": metrics.get('hrv_rest'),
                     "step_count": metrics.get('step_count', 0),
+                    "data_volume": data_volume,
                 }
             )
             
@@ -721,6 +569,37 @@ def save_health_metrics(engine, user_id, date, metrics):
         print(f"Error saving health metrics for user {user_id} on {date}: {e}")
         return False
     
+
+def calculate_data_volume(metrics):
+    """
+    Calculate the data volume for a health metrics record in bytes
+    
+    Args:
+        metrics: Dictionary with health metrics data
+        
+    Returns:
+        int: Data volume in bytes
+    """
+    volume = 0
+    
+    # Base health metrics record (~40 bytes)
+    volume += 40
+    
+    # Heart rate zones data (if present, ~40 bytes)
+    if any(f'{zone}_percent' in metrics for zone in ['very_light', 'light', 'moderate', 'intense', 'beast_mode']):
+        volume += 40
+    
+    # Movement speeds data (if present, ~16 bytes)
+    if any(f'{activity}_minutes' in metrics for activity in ['walking', 'walking_fast', 'jogging', 'running']):
+        volume += 16
+    
+    # Note: Anomaly scores are stored separately, so we'll estimate based on typical daily patterns
+    # Assume ~288 5-minute intervals per day * 8 bytes = ~2304 bytes
+    # For now, add a standard amount - could be made configurable
+    volume += 2304
+    
+    return volume
+
 
 def save_anomaly_scores(engine, user_id, anomaly_data):
     """
@@ -964,55 +843,45 @@ def main():
             print("Database connection successful")
         except Exception as e:
             print(f"Error connecting to database: {e}")
-            print("Please check your database connection settings and ensure the database server is running.")
             sys.exit(1)
         
         # Drop tables if requested
         if args.drop:
             try:
-                drop_tables(engine)
+                if not drop_tables(engine):
+                    sys.exit(1)
             except Exception as e:
                 print(f"Error dropping tables: {e}")
                 sys.exit(1)
         
-        # Create tables
+        # Create tables using schema files
         try:
-            create_tables(engine)
+            if not create_tables(engine):
+                sys.exit(1)
         except Exception as e:
             print(f"Error creating tables: {e}")
             sys.exit(1)
 
-        # Set permissions
-        if args.set_permissions:
-            try:
-                set_user_permissions(engine)
-            except Exception as e:
-                print(f"Error setting permissions: {e}")
+        # Execute function files
+        try:
+            if not execute_function_files(engine):
                 sys.exit(1)
+        except Exception as e:
+            print(f"Error executing functions: {e}")
+            sys.exit(1)
+
+        # Set permissions if requested
+        if args.set_permissions:
+            print("Note: Permissions are now handled by schema files")
         
         # Seed database if requested
         if args.seed:
             if not config:
-                print("Error: Cannot seed database without valid configuration. Please check your config file.")
+                print("Error: Cannot seed database without valid configuration.")
                 sys.exit(1)
                 
             try:
-                # If skipping anomalies is requested, patch the generate_mock_anomaly_data function
-                if args.skip_anomalies:
-                    print("Skipping anomaly data generation as requested")
-                    global generate_mock_anomaly_data
-                    old_func = generate_mock_anomaly_data
-                    def generate_mock_anomaly_data(*args, **kwargs):
-                        return []
-                
-                # Pass the anomaly interval parameter to the seed function
-                config['anomaly_interval'] = args.anomaly_interval
-                
                 seed_database(engine, config)
-                
-                # Restore the original function if we patched it
-                if args.skip_anomalies:
-                    generate_mock_anomaly_data = old_func
             except Exception as e:
                 print(f"Error seeding database: {e}")
                 sys.exit(1)

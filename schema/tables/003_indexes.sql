@@ -4,6 +4,9 @@
 CREATE INDEX IF NOT EXISTS idx_health_metrics_user_date ON health_metrics(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_health_metrics_date ON health_metrics(date);
 
+-- Data volume index
+CREATE INDEX IF NOT EXISTS idx_health_metrics_data_volume ON health_metrics(data_volume);
+
 -- User groups indexes
 CREATE INDEX IF NOT EXISTS idx_user_groups_group ON user_groups(group_id);
 CREATE INDEX IF NOT EXISTS idx_user_groups_user ON user_groups(user_id);

@@ -7,15 +7,15 @@ RETURNS TABLE (
     participant_id INTEGER,
     username TEXT,
     total_possible_days INTEGER,
-    days_with_data INTEGER,
-    consistency_percentage NUMERIC,
+    data_volume_total BIGINT,
+    data_volume_mb NUMERIC,
     rank INTEGER,
     total_participants INTEGER
 ) AS $$
 DECLARE
     v_total_participants INTEGER;
 BEGIN
-    -- First calculate total number of participants in the group
+    -- Calculate total number of participants in the group
     SELECT COUNT(*) INTO v_total_participants
     FROM users u
     JOIN user_groups ug ON u.id = ug.user_id
@@ -46,11 +46,10 @@ BEGIN
     participant_data AS (
         SELECT 
             gp.id AS participant_id, 
-            gp.username AS participant_name,
+            gp.username,
             dr.total_days AS total_possible_days,
-            COUNT(hm.date) AS days_with_data,
-            (COUNT(hm.date)::NUMERIC / dr.total_days::NUMERIC) * 100 AS consistency_percentage,
-            RANK() OVER (ORDER BY COUNT(hm.date) DESC) AS participant_rank
+            COALESCE(SUM(hm.data_volume), 0) AS total_data_volume,
+            RANK() OVER (ORDER BY COALESCE(SUM(hm.data_volume), 0) DESC) AS participant_rank
         FROM 
             group_participants gp
         CROSS JOIN
@@ -63,10 +62,10 @@ BEGIN
     )
     SELECT 
         pd.participant_id,
-        pd.participant_name::TEXT,
+        pd.username::TEXT,
         pd.total_possible_days::INTEGER,
-        pd.days_with_data::INTEGER,
-        pd.consistency_percentage,
+        pd.total_data_volume,
+        ROUND(pd.total_data_volume / 1024.0 / 1024.0, 2) AS data_volume_mb,
         pd.participant_rank::INTEGER,
         v_total_participants
     FROM 

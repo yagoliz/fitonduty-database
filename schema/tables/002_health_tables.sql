@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS health_metrics (
     sleep_hours NUMERIC(4,2),
     hrv_rest INTEGER,
     step_count INTEGER DEFAULT 0,
+    data_volume INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, date)
 );
