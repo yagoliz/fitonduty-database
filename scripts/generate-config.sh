@@ -178,7 +178,7 @@ EOF
 }
 
 # Generate seed data configuration
-SEED_CONFIG_FILE="$PROJECT_ROOT/config/seed-data/$ENVIRONMENT-seed.yml"
+SEED_CONFIG_FILE="$PROJECT_ROOT/config/seed-data/$ENVIRONMENT_seed.yml"
 
 generate_seed_config() {
     cat > "$SEED_CONFIG_FILE" << EOF

@@ -7,6 +7,14 @@
     group: postgres
     mode: '0755'
 
+- name: Create management scripts directory
+  file:
+    path: /opt/fitonduty-db/management
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
 - name: Install system Python dependencies
   apt:
     name:
@@ -42,15 +50,23 @@
 - name: Copy database management script
   copy:
     src: "{{ playbook_dir }}/../../python/db_manager.py"
-    dest: /opt/fitonduty-db/db_manager.py
+    dest: /opt/fitonduty-db/management/db_manager.py
     owner: postgres
     group: postgres
     mode: '0755'
 
 - name: Copy sql function generator
   copy:
-    src: "{{ playbook_dir }}/../../python/migration_runner.py"
-    dest: /opt/fitonduty-db/migration_runner.py
+    src: "{{ playbook_dir }}/../../python/function_manager.py"
+    dest: /opt/fitonduty-db/management/function_manager.py
+    owner: postgres
+    group: postgres
+    mode: '0755'
+
+- name: Copy sql migration manager
+  copy:
+    src: "{{ playbook_dir }}/../../python/migration_manager.py"
+    dest: /opt/fitonduty-db/management/migration_manager.py
     owner: postgres
     group: postgres
     mode: '0755'
@@ -81,7 +97,7 @@
 
 - name: Initialize database schema as postgres user
   command: >
-    /opt/fitonduty-db/venv/bin/python /opt/fitonduty-db/db_manager.py
+    /opt/fitonduty-db/venv/bin/python /opt/fitonduty-db/management/db_manager.py
     --db-url "postgresql://postgres:{{ vault_postgres_password }}@localhost:5432/{{ fitonduty_db_name }}"
     --config /opt/fitonduty-db/db_seed.yml
     --seed
@@ -95,9 +111,9 @@
 
 - name: 
   command: >
-    /opt/fitonduty-db/venv/bin/python /opt/fitonduty-db/migration_runner.py
+    /opt/fitonduty-db/venv/bin/python /opt/fitonduty-db/management/migration_manager.py
     --db-url "postgresql://postgres:{{ vault_postgres_password }}@localhost:5432/{{ fitonduty_db_name }}"
-    --project-root /opt/fitonduty-db
+    --migration-path /opt/fitonduty-db
   become_user: postgres
   environment:
     DB_ENVIRONMENT: "{{ db_environment }}"

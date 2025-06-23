@@ -1,0 +1,336 @@
+---
+- name: Complete Cleanup of FitonDuty Database Infrastructure
+  hosts: database_servers
+  become: yes
+  vars_files:
+    - "../vars/{{ db_environment }}/main.yml"
+    - "../vars/{{ db_environment }}/vault.yml"
+  vars:
+    database_name: "{{ fitonduty_db_name }}"
+    admin_user: "{{ fitonduty_admin_user }}"
+    admin_password: "{{ vault_admin_password }}"
+    app_user: "{{ fitonduty_app_user }}"
+    app_password: "{{ vault_app_password }}"
+    postgres_password: "{{ vault_postgres_password | default('') }}"
+    
+    # Safety variables
+    confirm_cleanup: "{{ force_cleanup | default(false) | bool }}"
+    backup_before_cleanup: "{{ create_backup | default(false) | bool }}"
+    backup_dir: "/opt/fitonduty-db/emergency-backups"
+    
+    # Cleanup targets
+    cleanup_database_files: "{{ remove_files | default(true) | bool }}"
+    cleanup_working_directory: "{{ remove_working_dir | default(true) | bool }}"
+
+  pre_tasks:
+    - name: Safety Check - Confirm cleanup is intended
+      fail:
+        msg: |
+          DANGER: This playbook will completely destroy the database and all related files!
+          
+          To proceed, you must explicitly set force_cleanup=true:
+          ansible-playbook -i inventory/{{ db_environment }}.yml playbooks/cleanup-database.yml --extra-vars "force_cleanup=true"
+          
+          Optional flags:
+          - create_backup=false (skip backup - NOT RECOMMENDED)
+          - remove_files=false (keep schema files and scripts)
+          - remove_working_dir=false (keep /opt/fitonduty-db directory)
+      when: not confirm_cleanup
+
+    - name: Display warning and wait for confirmation
+      pause:
+        prompt: |
+          ⚠️  WARNING: COMPLETE DATABASE CLEANUP OPERATION ⚠️
+          
+          This will PERMANENTLY REMOVE:
+          1. The entire {{ database_name }} database
+          2. All database users ({{ admin_user }}, {{ app_user }})
+          3. All schema files and scripts in /opt/fitonduty-db/
+          4. Database management tools and virtual environment
+          5. All backup files and working directories
+          
+          Environment: {{ db_environment }}
+          Database: {{ database_name }}
+          Backup enabled: {{ backup_before_cleanup }}
+          Remove files: {{ cleanup_database_files }}
+          Remove working dir: {{ cleanup_working_directory }}
+          
+          This operation is IRREVERSIBLE!
+          Are you absolutely sure you want to continue? (yes/no)
+      register: user_confirmation
+
+    - name: Abort if user didn't confirm
+      fail:
+        msg: "Operation aborted by user"
+      when: user_confirmation.user_input | lower != 'yes'
+
+    - name: Create backup directory
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '0755'
+      when: backup_before_cleanup
+
+  tasks:
+    # === BACKUP PHASE ===
+    - name: Create emergency backup before cleanup
+      block:
+        - name: Check if database exists for backup
+          postgresql_query:
+            login_user: postgres
+            login_password: "{{ postgres_password }}"
+            query: "SELECT 1 FROM pg_database WHERE datname = '{{ database_name }}'"
+          register: db_exists
+          failed_when: false
+
+        - name: Create full database backup
+          postgresql_db:
+            login_user: postgres
+            login_password: "{{ postgres_password }}"
+            name: "{{ database_name }}"
+            state: dump
+            target: "{{ backup_dir }}/{{ database_name }}_pre_cleanup_{{ ansible_date_time.epoch }}.sql"
+          when: db_exists.rowcount | default(0) > 0
+
+        - name: Create backup of users and permissions
+          shell: |
+            pg_dumpall --globals-only --username=postgres > {{ backup_dir }}/globals_backup_{{ ansible_date_time.epoch }}.sql
+          environment:
+            PGPASSWORD: "{{ postgres_password }}"
+          when: db_exists.rowcount | default(0) > 0
+
+        - name: Backup existing schema files and scripts
+          archive:
+            path: /opt/fitonduty-db/
+            dest: "{{ backup_dir }}/fitonduty_files_backup_{{ ansible_date_time.epoch }}.tar.gz"
+            exclude_path:
+              - /opt/fitonduty-db/emergency-backups
+              - /opt/fitonduty-db/backups
+          when: 
+            - cleanup_database_files
+            - db_exists.rowcount | default(0) > 0
+
+        - name: Compress database backups
+          archive:
+            path:
+              - "{{ backup_dir }}/{{ database_name }}_pre_cleanup_{{ ansible_date_time.epoch }}.sql"
+              - "{{ backup_dir }}/globals_backup_{{ ansible_date_time.epoch }}.sql"
+            dest: "{{ backup_dir }}/database_backup_{{ ansible_date_time.epoch }}.tar.gz"
+            remove: yes
+          when: db_exists.rowcount | default(0) > 0
+
+        - name: Set backup file permissions
+          file:
+            path: "{{ item }}"
+            owner: postgres
+            group: postgres
+            mode: '0600'
+          loop:
+            - "{{ backup_dir }}/database_backup_{{ ansible_date_time.epoch }}.tar.gz"
+            - "{{ backup_dir }}/fitonduty_files_backup_{{ ansible_date_time.epoch }}.tar.gz"
+          when: db_exists.rowcount | default(0) > 0
+          failed_when: false
+
+      when: backup_before_cleanup
+
+    # === DESTRUCTION PHASE ===
+    - name: Stop any active connections to the database
+      postgresql_query:
+        login_user: postgres
+        login_password: "{{ postgres_password }}"
+        query: |
+          SELECT pg_terminate_backend(pid)
+          FROM pg_stat_activity
+          WHERE datname = '{{ database_name }}'
+            AND pid <> pg_backend_pid();
+      failed_when: false
+
+    - name: Drop the database
+      postgresql_db:
+        login_user: postgres
+        login_password: "{{ postgres_password }}"
+        name: "{{ database_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Clean up any remaining database artifacts
+      postgresql_query:
+        login_user: postgres
+        login_password: "{{ postgres_password }}"
+        query: |
+          -- Clean up any remaining objects that might reference the users
+          DROP OWNED BY {{ admin_user }} CASCADE;
+          DROP OWNED BY {{ app_user }} CASCADE;
+      failed_when: false
+
+    - name: Drop application user
+      postgresql_user:
+        login_user: postgres
+        login_password: "{{ postgres_password }}"
+        name: "{{ app_user }}"
+        state: absent
+      failed_when: false
+
+    - name: Drop admin user
+      postgresql_user:
+        login_user: postgres
+        login_password: "{{ postgres_password }}"
+        name: "{{ admin_user }}"
+        state: absent
+      failed_when: false
+
+    # === FILE CLEANUP PHASE ===
+    - name: Remove database management files and scripts
+      block:
+        # - name: Stop any Python processes using the virtual environment
+        #   shell: |
+        #     pkill -f "/opt/fitonduty-db/venv" || true
+        #     sleep 2
+
+        - name: Remove schema files
+          file:
+            path: /opt/fitonduty-db/schema
+            state: absent
+
+        - name: Remove Python scripts
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /opt/fitonduty-db/db_manager.py
+            - /opt/fitonduty-db/function_manager.py
+            - /opt/fitonduty-db/migration_manager.py
+
+        - name: Remove configuration files
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /opt/fitonduty-db/db_config.yml
+            - /opt/fitonduty-db/db_seed.yml
+
+        - name: Remove Python virtual environment
+          file:
+            path: /opt/fitonduty-db/venv
+            state: absent
+
+        - name: Remove old backup files (but keep emergency backups)
+          shell: |
+            if [ -d "/opt/fitonduty-db/backups" ]; then
+              rm -rf /opt/fitonduty-db/backups
+            fi
+          failed_when: false
+
+      when: cleanup_database_files
+
+    - name: Remove entire working directory
+      block:
+        - name: Remove complete fitonduty-db directory
+          file:
+            path: /opt/fitonduty-db
+            state: absent
+
+      when: 
+        - cleanup_working_directory
+        - not backup_before_cleanup  # Don't remove if we have backups there
+
+    - name: Remove systemd backup service files (if any)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/fitonduty-backup.service
+        - /etc/systemd/system/fitonduty-backup.timer
+        - /etc/cron.d/fitonduty-backup
+      failed_when: false
+
+    - name: Reload systemd daemon after removing services
+      systemd:
+        daemon_reload: yes
+
+  post_tasks:
+    - name: Verify complete cleanup
+      block:
+        - name: Check database no longer exists
+          postgresql_query:
+            login_user: postgres
+            login_password: "{{ postgres_password }}"
+            query: "SELECT 1 FROM pg_database WHERE datname = '{{ database_name }}'"
+          register: db_check
+          failed_when: db_check.rowcount | default(0) > 0
+
+        - name: Check users no longer exist
+          postgresql_query:
+            login_user: postgres
+            login_password: "{{ postgres_password }}"
+            query: "SELECT 1 FROM pg_user WHERE usename IN ('{{ admin_user }}', '{{ app_user }}')"
+          register: user_check
+          failed_when: user_check.rowcount | default(0) > 0
+
+        - name: Check working directory removal
+          stat:
+            path: /opt/fitonduty-db
+          register: workdir_check
+          when: cleanup_working_directory and not backup_before_cleanup
+
+        - name: Display cleanup results
+          debug:
+            msg: |
+              ✅ Database cleanup completed successfully!
+              
+              Removed:
+              - Database: {{ database_name }} ✓
+              - Users: {{ admin_user }}, {{ app_user }} ✓
+              {% if cleanup_database_files %}
+              - Schema files and scripts ✓
+              {% endif %}
+              {% if cleanup_working_directory and not backup_before_cleanup %}
+              - Working directory (/opt/fitonduty-db) ✓
+              {% endif %}
+              
+              {% if backup_before_cleanup %}
+              Backup location: {{ backup_dir }}/
+              - Database backup: database_backup_{{ ansible_date_time.epoch }}.tar.gz
+              {% if cleanup_database_files %}
+              - Files backup: fitonduty_files_backup_{{ ansible_date_time.epoch }}.tar.gz
+              {% endif %}
+              {% endif %}
+
+      rescue:
+        - name: Display cleanup verification failure
+          debug:
+            msg: |
+              ⚠️  Cleanup completed but verification found remaining items:
+              
+              {% if db_check.rowcount | default(0) > 0 %}
+              - Database still exists (manual removal may be needed)
+              {% endif %}
+              {% if user_check.rowcount | default(0) > 0 %}
+              - Database users still exist (manual removal may be needed)
+              {% endif %}
+              {% if workdir_check.stat.exists | default(false) %}
+              - Working directory still exists
+              {% endif %}
+
+    - name: Display final cleanup status
+      debug:
+        msg: |
+          🧹 Complete database cleanup finished!
+          
+          Environment: {{ db_environment }}
+          Status: All FitonDuty database components removed
+          
+          {% if backup_before_cleanup %}
+          Recovery options:
+          - Database backup available in {{ backup_dir }}/
+          - Use the setup playbooks to recreate from scratch
+          {% else %}
+          No backups created - complete fresh start required
+          {% endif %}
+          
+          To recreate the database:
+          1. Run: ./scripts/deploy.sh {{ db_environment }}
+          2. Monitor logs for any issues
+          3. Test application connectivity
