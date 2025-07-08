@@ -3,6 +3,7 @@ ANSIBLE_CMD=(
     "ansible-playbook"
     "-i" "$INVENTORY_FILE"
     "$ANSIBLE_DIR/playbooks/cleanup#!/bin/bash"
+)
 
 set -e
 
@@ -175,7 +176,7 @@ fi
 ANSIBLE_CMD=(
     "ansible-playbook"
     "-i" "$INVENTORY_FILE"
-    "$ANSIBLE_DIR/playbooks/cleanup-database.yml"
+    "$ANSIBLE_DIR/playbooks/reset-database.yml"
     "--extra-vars" "force_cleanup=true"
 )
 

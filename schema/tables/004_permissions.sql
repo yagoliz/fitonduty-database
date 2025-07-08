@@ -28,6 +28,9 @@ GRANT SELECT ON users TO dashboard_user;
 GRANT UPDATE (last_login) ON users TO dashboard_user;
 GRANT USAGE ON SEQUENCE users_id_seq TO dashboard_user;
 
+GRANT INSERT, UPDATE, DELETE ON questionnaire_data TO dashboard_user;
+GRANT USAGE ON SEQUENCE questionnaire_data_id_seq TO dashboard_user;
+
 -- Default privileges for future objects
 ALTER DEFAULT PRIVILEGES FOR ROLE dashboard_admin IN SCHEMA public 
 GRANT SELECT ON TABLES TO dashboard_user;

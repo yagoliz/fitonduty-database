@@ -51,3 +51,15 @@ CREATE TABLE IF NOT EXISTS anomaly_scores (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, date, time_slot)
 );
+
+-- Questionnaire Data Table
+CREATE TABLE IF NOT EXISTS questionnaire_data (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    perceived_sleep_quality INTEGER CHECK (perceived_sleep_quality BETWEEN 0 AND 100),
+    fatigue_level INTEGER CHECK (fatigue_level BETWEEN 0 AND 100),
+    motivation_level INTEGER CHECK (motivation_level BETWEEN 0 AND 100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, date)
+);
