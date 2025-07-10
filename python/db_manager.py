@@ -200,6 +200,98 @@ def drop_tables(engine):
     except Exception as e:
         print(f"Error dropping tables: {e}")
         return False
+    
+
+def generate_questionnaire_data(user_id, start_date, end_date):
+    """Generate realistic questionnaire data for a user over a date range"""
+    import random
+    from datetime import timedelta
+    
+    questionnaire_data = []
+    current_date = start_date
+    
+    # Create some baseline patterns for this user
+    base_sleep_quality = random.uniform(60, 80)
+    base_fatigue = random.uniform(30, 60)
+    base_motivation = random.uniform(60, 85)
+    
+    # Add some personality traits that affect responses
+    sleep_variability = random.uniform(10, 25)
+    fatigue_variability = random.uniform(15, 30)
+    motivation_variability = random.uniform(10, 20)
+    
+    while current_date <= end_date:
+        # Skip some days randomly (not everyone fills questionnaires daily)
+        if random.random() < 0.15:  # 15% chance to skip a day
+            current_date += timedelta(days=1)
+            continue
+        
+        # Generate daily variations
+        day_of_week = current_date.weekday()
+        
+        # Weekend effect
+        weekend_sleep_bonus = 0.5 if day_of_week >= 5 else 0
+        weekend_motivation_penalty = -0.3 if day_of_week >= 5 else 0
+        
+        # Weekly cycle effect
+        week_progress = day_of_week / 6.0
+        weekly_fatigue_increase = week_progress * 1.5
+        
+        # Generate values with realistic constraints
+        sleep_quality = max(0, min(100, 
+            base_sleep_quality + weekend_sleep_bonus + 
+            random.gauss(0, sleep_variability)
+        ))
+        
+        fatigue_level = max(0, min(100,
+            base_fatigue + weekly_fatigue_increase + 
+            random.gauss(0, fatigue_variability)
+        ))
+        
+        motivation_level = max(0, min(100,
+            base_motivation + weekend_motivation_penalty + 
+            random.gauss(0, motivation_variability)
+        ))
+        
+        
+        questionnaire_data.append({
+            'user_id': user_id,
+            'date': current_date,
+            'perceived_sleep_quality': round(sleep_quality),
+            'fatigue_level': round(fatigue_level),
+            'motivation_level': round(motivation_level),
+        })
+        
+        current_date += timedelta(days=1)
+    
+    return questionnaire_data
+
+
+def insert_questionnaire_data(engine, questionnaire_data):
+    """Insert questionnaire data into the database"""
+    from sqlalchemy import text
+    
+    insert_query = text("""
+        INSERT INTO questionnaire_data 
+        (user_id, date, perceived_sleep_quality, fatigue_level, motivation_level)
+        VALUES (:user_id, :date, :perceived_sleep_quality, :fatigue_level, :motivation_level)
+        ON CONFLICT (user_id, date) DO UPDATE SET
+            perceived_sleep_quality = EXCLUDED.perceived_sleep_quality,
+            fatigue_level = EXCLUDED.fatigue_level,
+            motivation_level = EXCLUDED.motivation_level,
+            created_at = CURRENT_TIMESTAMP
+    """)
+    
+    try:
+        with engine.connect() as conn:
+            for data in questionnaire_data:
+                conn.execute(insert_query, data)
+            conn.commit()
+        print(f"✓ Inserted {len(questionnaire_data)} questionnaire records")
+        return True
+    except Exception as e:
+        print(f"✗ Error inserting questionnaire data: {e}")
+        return False
 
 
 def import_mock_data(engine, user_id, start_date, end_date, overwrite=False):
@@ -706,34 +798,15 @@ def seed_database(engine, config):
         # Process groups
         print("\nCreating groups...")
         for group in config['groups']:
-            try:
-                # Get creator ID (default to first admin if not specified)
-                creator_username = group.get('created_by', list(admin_ids.keys())[0] if admin_ids else None)
-                creator_id = admin_ids.get(creator_username)
-                
-                group_data = {
-                    "group_name": group['name'],
-                    "description": group.get('description', ''),
-                    "created_by": creator_id
-                }
-                
-                group_query = text("""
-                    INSERT INTO groups (group_name, description, created_by)
-                    VALUES (:group_name, :description, :created_by)
-                    ON CONFLICT (group_name) DO UPDATE SET
-                    description = :description
-                    RETURNING id
-                """)
-                
-                with engine.begin() as conn:
-                    group_result = conn.execute(group_query, group_data)
-                    row = group_result.fetchone()
-                    if row:
-                        group_id = row[0]
-                        group_map[group['name']] = group_id
-                        print(f"Group created: {group['name']} (ID: {group_id})")
-            except Exception as e:
-                print(f"Error creating group {group.get('name', 'unknown')}: {e}")
+            group_id = create_group(
+                engine,
+                group['name'],
+                group['description'],
+                group['created_by'],
+                group.get('campaign_start_date')
+            )
+
+            group_map[group['name']] = group_id
         
         if not group_map:
             print("Warning: No groups were created. Participant group assignments will fail.")
@@ -800,6 +873,20 @@ def seed_database(engine, config):
                     success = import_mock_data(engine, participant_id, start_date, today)
                     if not success:
                         print(f"  - Failed to generate health data for {participant['username']}")
+
+                    # Generate questionnaire data
+                    print(f"Generating questionnaire data for {participant['username']}...")
+                    questionnaire_data = generate_questionnaire_data(
+                        participant_id, 
+                        start_date, 
+                        today
+                    )
+
+                    if questionnaire_data:
+                        if insert_questionnaire_data(engine, questionnaire_data):
+                            print(f"  - Inserted {len(questionnaire_data)} questionnaire records")
+                        else:
+                            print(f"  - Failed to insert questionnaire data for {participant['username']}")
                         
                     # Generate anomaly scores
                     print(f"Generating anomaly scores for {participant['username']}...")
@@ -823,6 +910,63 @@ def seed_database(engine, config):
         return False
     
     return True
+
+
+def create_group(engine, group_name, description, created_by_username, campaign_start_date=None):
+    """Create a new group with optional campaign start date"""
+    from sqlalchemy import text
+    
+    # Get the creator's user ID
+    creator_query = text("SELECT id FROM users WHERE username = :username")
+    
+    try:
+        with engine.connect() as conn:
+            creator_result = conn.execute(creator_query, {"username": created_by_username})
+            creator_row = creator_result.fetchone()
+            
+            if not creator_row:
+                print(f"✗ Creator user '{created_by_username}' not found")
+                return None
+            
+            creator_id = creator_row[0]
+            
+            # Insert the group with campaign start date
+            if campaign_start_date:
+                insert_query = text("""
+                    INSERT INTO groups (group_name, description, created_by, campaign_start_date)
+                    VALUES (:group_name, :description, :created_by, :campaign_start_date)
+                    RETURNING id
+                """)
+                params = {
+                    "group_name": group_name,
+                    "description": description,
+                    "created_by": creator_id,
+                    "campaign_start_date": campaign_start_date
+                }
+            else:
+                insert_query = text("""
+                    INSERT INTO groups (group_name, description, created_by)
+                    VALUES (:group_name, :description, :created_by)
+                    RETURNING id
+                """)
+                params = {
+                    "group_name": group_name,
+                    "description": description,
+                    "created_by": creator_id
+                }
+            
+            result = conn.execute(insert_query, params)
+            group_id = result.fetchone()[0]
+            conn.commit()
+            
+            campaign_info = f" (campaign starts: {campaign_start_date})" if campaign_start_date else ""
+            print(f"✓ Created group: {group_name}{campaign_info}")
+            return group_id
+            
+    except Exception as e:
+        print(f"✗ Error creating group {group_name}: {e}")
+        return None
+
 
 def main():
     args = parse_args()

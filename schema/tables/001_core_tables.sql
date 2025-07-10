@@ -48,3 +48,9 @@ CREATE TABLE IF NOT EXISTS user_notes (
     note TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add campaign_start_date column to groups table
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS campaign_start_date DATE;
+
+-- Add a comment to explain the column
+COMMENT ON COLUMN groups.campaign_start_date IS 'The date when the campaign/study period begins for this group';

@@ -13,6 +13,7 @@ groups:
   - name: "Main Group"
     description: "Primary participant group"
     created_by: "admin"
+    campaign_start_date: "2025-06-30"
 
 participants:
   - username: "demo_participant"
