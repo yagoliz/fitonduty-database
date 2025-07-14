@@ -25,7 +25,9 @@ config/environments/*.yml
 
 # Examples
 python/examples/*.csv
+python/config/*.yml
 !python/examples/participants_example.csv
+
 
 # Backup files
 *.bak

@@ -43,6 +43,17 @@ BEGIN
             )
             AND u.role = 'participant'
     ),
+    date_range AS (
+        SELECT 
+            (p_end_date - p_start_date + 1) - COALESCE(excluded_count.count, 0) AS total_days
+        FROM (
+            SELECT COUNT(*) as count
+            FROM excluded_days ed
+            JOIN user_groups ug ON ed.group_id = ug.group_id
+            WHERE ug.user_id = p_user_id
+            AND ed.date BETWEEN p_start_date AND p_end_date
+        ) excluded_count
+    ),
     participant_data AS (
         SELECT 
             gp.id AS participant_id, 
@@ -57,6 +68,12 @@ BEGIN
         LEFT JOIN 
             health_metrics hm ON gp.id = hm.user_id 
                 AND hm.date BETWEEN p_start_date AND p_end_date
+                AND hm.date NOT IN (
+                    SELECT ed.date 
+                    FROM excluded_days ed 
+                    JOIN user_groups ug ON ed.group_id = ug.group_id 
+                    WHERE ug.user_id = p_user_id
+                )
         GROUP BY 
             gp.id, gp.username, dr.total_days
     )

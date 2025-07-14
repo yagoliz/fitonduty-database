@@ -1,0 +1,31 @@
+# Excluded days configuration
+groups:
+  - group_id: 1
+    start_date: "2025-07-08"
+    end_date: "2025-11-30"
+    exclude_saturdays: true
+    weekly_patterns:
+      - weekdays: [6]  # Sunday
+        reason: "Sunday - no data expected"
+    specific_dates:
+      - date: "2024-12-25"
+        reason: "Christmas holiday"
+      - date: "2024-01-01"
+        reason: "New Year's Day"
+      - date: "2024-07-04"
+        reason: "Independence Day"
+      - date: "2024-11-28"
+        reason: "Thanksgiving"
+  
+  - group_id: 2
+    start_date: "2025-07-08"
+    end_date: "2025-11-30"
+    exclude_saturdays: true
+    weekly_patterns:
+      - weekdays: [0]  # Monday
+        reason: "Monday - administrative day"
+    specific_dates:
+      - date: "2024-12-25"
+        reason: "Christmas holiday"
+      - date: "2024-01-01"
+        reason: "New Year's Day"
