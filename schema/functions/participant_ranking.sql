@@ -25,11 +25,11 @@ BEGIN
     AND u.role = 'participant';
 
     RETURN QUERY
-    WITH date_range AS (
-        SELECT 
-            p_end_date - p_start_date + 1 AS total_days
-    ),
-    group_participants AS (
+    -- WITH date_range AS (
+    --     SELECT 
+    --         p_end_date - p_start_date + 1 AS total_days
+    -- ),
+    WITH group_participants AS (
         SELECT 
             u.id, 
             u.username

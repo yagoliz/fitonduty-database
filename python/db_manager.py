@@ -761,6 +761,7 @@ def seed_database(engine, config):
         
     admin_ids = {}
     group_map = {}
+    supervisor_ids = {}  # Store supervisor IDs for reference
     participant_ids = {}  # Store participant IDs for reference
     
     try:
@@ -810,6 +811,54 @@ def seed_database(engine, config):
         
         if not group_map:
             print("Warning: No groups were created. Participant group assignments will fail.")
+
+        # Creating supervisors
+        print("Creating supervisor users...")
+        for supervisor in config['supervisors']:
+            try:
+                supervisor_user = {
+                    "username": supervisor['username'],
+                    "password_hash": generate_password_hash(supervisor['password']),
+                    "role": "supervisor"
+                }
+                
+                supervisor_query = text("""
+                    INSERT INTO users (username, password_hash, role)
+                    VALUES (:username, :password_hash, :role)
+                    ON CONFLICT (username) DO UPDATE SET
+                    password_hash = :password_hash
+                    RETURNING id
+                """)
+                
+                with engine.begin() as conn:
+                    supervisor_result = conn.execute(supervisor_query, supervisor_user)
+                    row = supervisor_result.fetchone()
+                    if row:
+                        supervisor_id = row[0]
+                        supervisor_ids[supervisor['username']] = supervisor_id
+                        print(f"Admin user created: {supervisor['username']} (ID: {supervisor_id})")
+
+                        # Assign participant to group(s)
+                        group_names = supervisor.get('groups', [])
+                        if isinstance(group_names, str):
+                            group_names = [group_names]  # Convert single string to list
+                            
+                        for group_name in group_names:
+                            group_id = group_map.get(group_name)
+                            if group_id:
+                                group_assign_query = text("""
+                                    INSERT INTO user_groups (user_id, group_id)
+                                    VALUES (:user_id, :group_id)
+                                    ON CONFLICT (user_id, group_id) DO NOTHING
+                                """)
+                                
+                                conn.execute(group_assign_query, {"user_id": supervisor_id, "group_id": group_id})
+                                print(f"  - Assigned to group: {group_name}")
+                            else:
+                                print(f"  - Warning: Group '{group_name}' not found, skipping assignment")
+            except Exception as e:
+                print(f"Error creating admin user {supervisor.get('username', 'unknown')}: {e}")
+        
         
         # Process participants
         print("\nCreating participants...")

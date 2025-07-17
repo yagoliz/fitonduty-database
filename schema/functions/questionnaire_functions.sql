@@ -167,17 +167,17 @@ BEGIN
     v_campaign_start_date := GREATEST(v_campaign_start_date, p_start_date);
 
     RETURN QUERY
-    date_range AS (
+    WITH date_range AS (
         SELECT 
-            v_effective_start_date as effective_start_date,
+            v_campaign_start_date as effective_start_date,
             p_end_date as end_date,
-            (p_end_date - v_effective_start_date + 1) - COALESCE(excluded_count.count, 0) AS total_days
+            (p_end_date - v_campaign_start_date + 1) - COALESCE(excluded_count.count, 0) AS total_days
         FROM (
             SELECT COUNT(*) as count
             FROM excluded_days ed
             JOIN user_groups ug ON ed.group_id = ug.group_id
             WHERE ug.user_id = p_user_id
-            AND ed.date BETWEEN v_effective_start_date AND p_end_date
+            AND ed.date BETWEEN v_campaign_start_date AND p_end_date
         ) excluded_count
     ),
     group_participants AS (

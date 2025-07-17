@@ -196,6 +196,7 @@ def create_seed_config(campaign_name, directory_structure, admin_username="admin
             }
         ],
         'groups': [],
+        'supervisors': [],
         'participants': []
     }
     
@@ -207,6 +208,17 @@ def create_seed_config(campaign_name, directory_structure, admin_username="admin
             'created_by': admin_username
         }
         config['groups'].append(group_config)
+
+    # Add supervisors
+    for group_name in directory_structure.keys():
+        supervisor_config = {
+            'username': f'supervisor_{group_name.lower()}',
+            'password': generate_password(),
+            'groups': group_name,  # Single group assignment
+            'role': 'supervisor',
+            'generate_data': False,
+        }
+        config['supervisors'].append(supervisor_config)
     
     # Add participants
     for group_name, participants in directory_structure.items():
