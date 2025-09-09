@@ -3,6 +3,8 @@
 
 .DS_Store
 
+.claude/
+
 # Generated configuration files (contain secrets)
 config/seed-data/*-seed.yml
 config/seed-data/*_seed.yml
